@@ -43,29 +43,42 @@ class McpServerTests(unittest.TestCase):
     def tearDown(self):
         mcp_server._config = None
 
-    def test_three_safe_tools_are_registered(self):
+    def _tool_names(self):
         import asyncio
 
-        names = {t.name for t in asyncio.run(mcp_server.mcp.list_tools())}
+        return {t.name for t in asyncio.run(mcp_server.mcp.list_tools())}
+
+    def test_phase3_tools_are_registered(self):
         self.assertEqual(
-            names,
+            self._tool_names(),
             {
+                # Phase 1: status
                 "second_brain_health_check",
                 "second_brain_job_status",
                 "second_brain_sync_status",
+                # Phase 2: capture
                 "second_brain_capture_note",
-                "second_brain_undo_capture",
+                # Phase 3: search + organize + unified undo
+                "second_brain_search_vault",
+                "second_brain_get_note",
+                "second_brain_move_note",
+                "second_brain_update_note",
+                "second_brain_undo",
             },
         )
 
-    def test_future_write_tools_not_exposed(self):
-        import asyncio
+    def test_disabled_and_retired_tools_not_exposed(self):
+        from second_brain.tools.capabilities import INITIAL_CAPABILITIES
 
-        names = {t.name for t in asyncio.run(mcp_server.mcp.list_tools())}
-        # update/move are not implemented until Phase 3.
-        for forbidden in ("update_note", "move_note", "search_vault"):
+        names = self._tool_names()
+        disabled = [c.id for c in INITIAL_CAPABILITIES if not c.enabled]
+        # approve_media (Phase 6) must stay disabled until its phase.
+        self.assertIn("approve_media", disabled)
+        for forbidden in disabled:
             self.assertNotIn(forbidden, names)
             self.assertNotIn(f"second_brain_{forbidden}", names)
+        # undo_capture was replaced by the unified `undo` tool in Phase 3.
+        self.assertNotIn("second_brain_undo_capture", names)
 
     def test_health_check_dispatch(self):
         data = json.loads(mcp_server._dispatch("health_check"))
